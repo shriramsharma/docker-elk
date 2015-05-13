@@ -5,12 +5,13 @@ ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get update
 RUN apt-get install -y supervisor curl
+RUN apt-get install -y openssh-server
 
 # Elasticsearch
 RUN \
     apt-key adv --keyserver pool.sks-keyservers.net --recv-keys 46095ACC8548582C1A2699A9D27D666CD88E42B4 && \
     if ! grep "elasticsearch" /etc/apt/sources.list; then echo "deb http://packages.elasticsearch.org/elasticsearch/1.4/debian stable main" >> /etc/apt/sources.list;fi && \
-    if ! grep "logstash" /etc/apt/sources.list; then echo "deb http://packages.elasticsearch.org/logstash/1.4/debian stable main" >> /etc/apt/sources.list;fi && \
+    if ! grep "logstash" /etc/apt/sources.list; then echo "deb http://packages.elasticsearch.org/logstash/1.5/debian stable main" >> /etc/apt/sources.list;fi && \
     apt-get update
 
 RUN \
@@ -19,11 +20,16 @@ RUN \
     sed -i '/#cluster.name:.*/a cluster.name: logstash' /etc/elasticsearch/elasticsearch.yml && \
     sed -i '/#path.data: \/path\/to\/data/a path.data: /data' /etc/elasticsearch/elasticsearch.yml
 
+RUN /usr/share/elasticsearch/bin/plugin -install mobz/elasticsearch-head
+RUN /usr/share/elasticsearch/bin/plugin -install lukas-vlcek/bigdesk
+
 ADD etc/supervisor/conf.d/elasticsearch.conf /etc/supervisor/conf.d/elasticsearch.conf
 
 # Logstash
-RUN apt-get install -y logstash logstash-contrib && \
+RUN apt-get install -y logstash && \
     apt-get clean
+
+RUN /opt/logstash/bin/plugin install logstash-input-kafka
 
 ADD etc/supervisor/conf.d/logstash.conf /etc/supervisor/conf.d/logstash.conf
 
@@ -35,7 +41,14 @@ RUN \
 
 ADD etc/supervisor/conf.d/kibana.conf /etc/supervisor/conf.d/kibana.conf
 
-EXPOSE 80
+ADD etc/supervisor/conf.d/sshd.conf /etc/supervisor/conf.d/sshd.conf
+
+ADD logstash.conf /etc/logstash/logstash.conf
+
+RUN mkdir /var/run/sshd
+RUN echo 'root:docker' | chpasswd
+
+EXPOSE 22 80
 
 CMD [ "/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf" ]
 
